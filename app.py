@@ -1,58 +1,123 @@
 import streamlit as st
 
-# 1. Page Configuration (MUST be the first streamlit command)
+# 1. Page Configuration
 st.set_page_config(
-    page_title="Uganda Customs Tax Pro",
-    page_icon="🇺🇬",
-    layout="centered"
+    page_title="Rubirizi Clearing & Forwarding Agency",
+    page_icon="🏢",
+    layout="wide"
 )
 
-# 2. App Styling
-st.title("🇺🇬 Uganda Customs Tax Calculator")
-st.markdown("Calculate estimated taxes for imported goods based on URA standards.")
-
-# 3. User Input Section
-with st.sidebar:
-    st.header("Input Details")
-    customs_value = st.number_input("Customs Value (CIF in UGX)", min_value=0.0, step=1000.0)
-    duty_rate = st.selectbox("Import Duty Rate (%)", [0, 10, 25, 35, 60], index=2)
-    
-st.subheader("Tax Breakdown")
-
-# 4. Calculation Logic
-# Standard Uganda Tax Rates
-VAT_RATE = 0.18
-WHT_RATE = 0.06
-INFRA_LEVY_RATE = 0.015
-
-if customs_value > 0:
-    import_duty = customs_value * (duty_rate / 100)
-    infra_levy = customs_value * INFRA_LEVY_RATE
-    
-    # VAT is calculated on (CIF + Import Duty + Any Excise)
-    vat_base = customs_value + import_duty
-    vat = vat_base * VAT_RATE
-    
-    wht = customs_value * WHT_RATE
-    
-    total_tax = import_duty + infra_levy + vat + wht
-
-    # 5. Display Results in a Table
-    data = {
-        "Tax Component": ["Import Duty", "VAT (18%)", "Withholding Tax (6%)", "Infrastructure Levy"],
-        "Amount (UGX)": [
-            f"{import_duty:,.0f}", 
-            f"{vat:,.0f}", 
-            f"{wht:,.0f}", 
-            f"{infra_levy:,.0f}"
-        ]
+# 2. Custom CSS for Agency Branding & Footer
+st.markdown("""
+    <style>
+    .main {
+        background-color: #ffffff;
     }
-    st.table(data)
+    .stButton>button {
+        width: 100%;
+        border-radius: 4px;
+        height: 3.5em;
+        background-color: #075E54;
+        color: white;
+        font-weight: bold;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #128C7E;
+        border: 1px solid #075E54;
+    }
+    .agency-header {
+        background-color: #0047AB;
+        padding: 25px;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #f8f9fa;
+        color: #444;
+        text-align: center;
+        padding: 10px;
+        font-size: 13px;
+        border-top: 2px solid #0047AB;
+        z-index: 100;
+    }
+    .dev-credit {
+        color: #0047AB;
+        font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    st.success(f"### Total Estimated Tax: UGX {total_tax:,.0f}")
+# 3. Agency Header
+st.markdown("""
+    <div class="agency-header">
+        <h1>RUBIRIZI CLEARING AND FORWARDING AGENCY</h1>
+        <p>Licensed Customs Agents | Excellence in Logistics since 1995</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 4. Main Interface
+col_in, col_out = st.columns([1, 2], gap="large")
+
+with col_in:
+    st.subheader("📦 Consignment Details")
+    cif_value = st.number_input("CIF Value (UGX)", min_value=0.0, step=10000.0, help="Cost + Insurance + Freight")
+    
+    duty_cat = st.selectbox("Duty Category", 
+                           ["Raw Materials (0%)", "Intermediate (10%)", "Finished Goods (25%)", "Sensitive Items (35%)", "Luxury (60%)"],
+                           index=2)
+    
+    # Extract percentage logic
+    duty_rate = int(duty_cat.split('(')[1].split('%')[0])
+    
+    excise_rate = st.number_input("Excise Duty (%)", min_value=0.0, max_value=100.0, step=1.0)
+    
+    st.write("---")
+    st.markdown("### 📞 Agency Support")
+    # WhatsApp link using your business number 0706631303
+    wa_link = "https://wa.me/256706631303?text=I%20need%20official%20clearing%20assistance%20from%20Rubirizi%20Agency."
+    st.link_button("Contact Agency on WhatsApp", wa_link)
+
+# 5. Tax Logic
+VAT = 0.18
+WHT = 0.06
+INFRA = 0.015
+
+if cif_value > 0:
+    id_amt = cif_value * (duty_rate / 100)
+    ex_amt = (cif_value + id_amt) * (excise_rate / 100)
+    infra_amt = cif_value * INFRA
+    vat_amt = (cif_value + id_amt + ex_amt) * VAT
+    wht_amt = cif_value * WHT
+    
+    total_payable = id_amt + ex_amt + infra_amt + vat_amt + wht_amt
+
+    with col_out:
+        st.subheader("📑 Official Tax Assessment")
+        
+        # Display breakdown
+        st.table({
+            "Customs Component": ["Import Duty", "Excise Duty", "VAT (18%)", "Withholding Tax (6%)", "Infrastructure Levy"],
+            "Amount (UGX)": [f"{id_amt:,.0f}", f"{ex_amt:,.0f}", f"{vat_amt:,.0f}", f"{wht_amt:,.0f}", f"{infra_amt:,.0f}"]
+        })
+        
+        st.metric(label="Total Estimated Tax Payable", value=f"UGX {total_payable:,.0f}")
+        st.warning("⚠️ Disclaimer: Estimates only. Final taxes are determined by URA ASYCUDA.")
 else:
-    st.info("Enter the Customs Value in the sidebar to begin calculation.")
+    with col_out:
+        st.info("Provide consignment values in the sidebar to generate the tax report.")
 
-# Footer
-st.divider()
-st.caption("Developed by Tukesiga Victor | Professional Tax Tool")
+# 6. Professional Footer with Developer Credit
+st.markdown("""
+    <div class="footer">
+        <b>RUBIRIZI CLEARING AND FORWARDING AGENCY</b> | Kichamba, Rubirizi District | 
+        <span class="dev-credit">Developed by Victor</span>
+    </div>
+    """, unsafe_allow_html=True)
