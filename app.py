@@ -1,176 +1,141 @@
-import streamlit as st
+
+ import streamlit as st
+import pandas as pd
 
 # 1. Page Configuration
-st.set_page_config(
-    page_title="Rubirizi Clearing & Forwarding Agency",
-    page_icon="🏢",
-    layout="wide"
-)
+st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="📊", layout="centered")
 
-# 2. Professional Agency Styling (CSS)
+# 2. Professional Branding & Custom CSS
 st.markdown("""
     <style>
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
-        height: 3.5em;
-        background-color: #25D366;
-        color: white;
-        font-weight: bold;
-        border: none;
-        font-size: 16px;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #128C7E;
-        transform: scale(1.02);
-    }
-    .agency-header {
-        background-color: #0047AB;
-        padding: 30px;
+    .main { background-color: #f8f9fa; }
+    .stHeader {
+        background-color: #1a2a6c;
+        padding: 25px;
         border-radius: 12px;
         color: white;
         text-align: center;
-        margin-bottom: 25px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
     }
-    .footer {
-        position: fixed;
-        left: 0;
-        bottom: 0;
+    div.stButton > button:first-child {
         width: 100%;
-        background-color: #f8f9fa;
-        color: #333;
-        text-align: center;
-        padding: 12px;
-        border-top: 4px solid #0047AB;
-        z-index: 100;
-        font-size: 14px;
-    }
-    .dev-tag {
-        color: #0047AB;
+        background-color: #1a2a6c;
+        color: white;
+        height: 3.5em;
         font-weight: bold;
+        border-radius: 8px;
+        border: none;
+    }
+    .result-card {
+        padding: 25px;
+        background-color: white;
+        border-radius: 12px;
+        border-left: 6px solid #1a2a6c;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-top: 20px;
+    }
+    .tax-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 0;
+        border-bottom: 1px solid #eee;
     }
     </style>
-    """, unsafe_allow_html=True)
-
-# 3. Sidebar: Navigation & Settings
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/truck.png", width=80)
-    st.header("App Control")
-    # Light/Dark Toggle
-    theme_choice = st.toggle("☀ Light / 🌙 Dark Mode", value=True)
-    
-    st.divider()
-    
-    st.subheader("📦 Consignment Setup")
-    # THE DROPDOWN: General Cargo vs Motor Vehicles
-    cargo_type = st.selectbox(
-        "Select Consignment Type", 
-        ["General Cargo", "Motor Vehicle"],
-        help="Choose 'Motor Vehicle' for specialized car taxation logic."
-    )
-    
-    st.divider()
-    st.info("📍 **Agency Office:** Nakawa, Kampala")
-    st.caption("Licensed Customs Clearing Specialists")
-
-# 4. Main Agency Header
-st.markdown("""
-    <div class="agency-header">
-        <h1>RUBIRIZI CLEARING AND FORWARDING AGENCY</h1>
-        <p>Customs Excellence | Nakawa, Kampala | Established 1995</p>
+    <div class="stHeader">
+        <h1>Rubirizi Tax Pro</h1>
+        <p>Expert Customs & Tax Consultancy Services</p>
     </div>
     """, unsafe_allow_html=True)
 
-# 5. Input Section
-col_in, col_out = st.columns([1, 2], gap="large")
+# 3. Load HS Code Database
+@st.cache_data
+def load_hscodes():
+    try:
+        # Tries to load the CSV file from your repository
+        data = pd.read_csv('hscodes.csv')
+        data['duty_rate'] = data['duty_rate'].astype(float)
+        return data
+    except:
+        # Fallback if file is missing during first setup
+        return pd.DataFrame(columns=['hs_code', 'description', 'duty_rate'])
 
-with col_in:
-    st.subheader("📄 Item Assessment")
-    cif_input = st.number_input("CIF Value (UGX)", min_value=0.0, step=100000.0, help="Cost + Insurance + Freight")
+df = load_hscodes()
+
+# 4. Search and Selection Logic
+st.subheader("🔍 Step 1: Find Product & Duty Rate")
+search_query = st.text_input("Search by product name or HS Code (e.g. 'Kitenge' or '8703')")
+
+selected_rate = 0.0
+is_vehicle = False
+product_name = "General Goods"
+
+if search_query:
+    results = df[df['description'].str.contains(search_query, case=False, na=False) | 
+                 df['hs_code'].astype(str).str.contains(search_query, na=False)]
     
-    # Initialize tax variables
-    import_duty_rate = 25.0
-    env_levy_rate = 0.0
-    digital_plate_fee = 0.0
-    
-    if cargo_type == "Motor Vehicle":
-        st.markdown("#### 🚗 Vehicle Details")
-        v_age = st.selectbox("Vehicle Age (from manufacture)", 
-                             ["0-8 Years (Standard)", "9-14 Years (35% Env. Levy)", "15+ Years (50% Env. Levy)"])
+    if not results.empty:
+        options = results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1).tolist()
+        choice = st.selectbox("Select the exact item:", options)
         
-        # Uganda Environmental Levy Logic
-        if "9-14" in v_age: env_levy_rate = 0.35
-        elif "15+" in v_age: env_levy_rate = 0.50
+        # Extract selected data
+        match = results[results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1) == choice].iloc[0]
+        selected_rate = float(match['duty_rate'])
+        product_name = match['description']
         
-        # 2026 Digital Plate Fee (Standard for new registrations)
-        digital_plate_fee = 714300 
-        import_duty_rate = 25.0 
+        # Check if it's a vehicle (Chapter 87) for extra taxes
+        if str(match['hs_code']).startswith('87'):
+            is_vehicle = True
+            st.warning("🚗 Vehicle Category Detected: Additional Excise and Environmental levies may apply.")
+        
+        st.info(f"**Applied Import Duty:** {selected_rate * 100}%")
     else:
-        duty_cat = st.selectbox("Duty Category", 
-                               ["Finished Goods (25%)", "Intermediate (10%)", "Raw Materials (0%)", "Sensitive (35%)"])
-        import_duty_rate = float(duty_cat.split('(')[1].split('%')[0])
+        st.error("No matching HS Code found. Please enter details manually below.")
 
-    st.write("---")
-    
-    # Call to Action: Hire Victor Button
-    wa_msg = f"Hello Victor, I want to hire Rubirizi Agency for my {cargo_type} clearing in Nakawa."
-    wa_link = f"https://wa.me/256706631303?text={wa_msg.replace(' ', '%20')}"
-    st.link_button("✅ Hire Victor for Clearing on WhatsApp", wa_link)
-    
-    if st.button("🔄 Reset Calculator"):
-        st.rerun()
+# 5. Calculation Logic
+st.subheader("💰 Step 2: Valuation & Calculation")
+cif_val = st.number_input("Enter Customs Value (CIF) in UGX", min_value=0, step=500000, format="%d")
 
-# 6. Tax Calculation Logic
-VAT_RATE = 0.18
-WHT_RATE = 0.06
-INFRA_LEVY_RATE = 0.015
-IDF_RATE = 0.01 # Import Declaration Fee
+# Optional: Manual override if search failed
+if not search_query or results.empty:
+    selected_rate = st.slider("Manual Import Duty Rate", 0.0, 1.0, 0.25, 0.05)
 
-if cif_input > 0:
-    id_amt = cif_input * (import_duty_rate / 100)
-    env_amt = cif_input * env_levy_rate
-    infra_amt = cif_input * INFRA_LEVY_RATE
-    idf_amt = cif_input * IDF_RATE
-    
-    # VAT Base = CIF + Import Duty + Environmental Levy
-    vat_base = cif_input + id_amt + env_amt
-    vat_amt = vat_base * VAT_RATE
-    
-    wht_amt = cif_input * WHT_RATE
-    
-    total_tax = id_amt + env_amt + infra_amt + idf_amt + vat_amt + wht_amt + digital_plate_fee
-
-    with col_out:
-        st.subheader("📑 Official Assessment Summary")
+if st.button("Generate Tax Estimate"):
+    if cif_val > 0:
+        # Standard Calculations
+        import_duty = cif_val * selected_rate
         
-        # Data table for display
-        breakdown = {
-            "Customs Component": ["Import Duty", "VAT (18%)", "Withholding Tax (6%)", "Infrastructure Levy", "Import Declaration Fee (1%)"],
-            "Amount (UGX)": [f"{id_amt:,.0f}", f"{vat_amt:,.0f}", f"{wht_amt:,.0f}", f"{infra_amt:,.0f}", f"{idf_amt:,.0f}"]
-        }
+        # Vehicle Specifics (Uganda standard estimates)
+        excise_duty = cif_val * 0.20 if is_vehicle else 0
+        env_levy = cif_val * 0.35 if is_vehicle else 0
         
-        # Inject vehicle specific rows
-        if env_amt > 0:
-            breakdown["Customs Component"].insert(1, "Environmental Levy")
-            breakdown["Amount (UGX)"].insert(1, f"{env_amt:,.0f}")
+        # VAT is calculated on (CIF + Import Duty + Excise)
+        vat_base = cif_val + import_duty + excise_duty
+        vat = vat_base * 0.18
         
-        if digital_plate_fee > 0:
-            breakdown["Customs Component"].append("Digital Registration Plates")
-            breakdown["Amount (UGX)"].append(f"{digital_plate_fee:,.0f}")
+        # Withholding Tax (Standard 6%)
+        wht = cif_val * 0.06
+        
+        total_payable = import_duty + excise_duty + env_levy + vat + wht
+        
+        # 6. Display Results
+        st.markdown(f"""
+        <div class="result-card">
+            <h2 style="color: #1a2a6c; margin-top:0;">Total: UGX {total_payable:,.0f}</h2>
+            <p><b>Product:</b> {product_name}</p>
+            <hr>
+            <div class="tax-item"><span>Import Duty ({selected_rate*100}%):</span> <b>UGX {import_duty:,.0f}</b></div>
+            {"<div class='tax-item'><span>Excise Duty (20%):</span> <b>UGX " + f"{excise_duty:,.0f}" + "</b></div>" if is_vehicle else ""}
+            {"<div class='tax-item'><span>Environmental Levy (35%):</span> <b>UGX " + f"{env_levy:,.0f}" + "</b></div>" if is_vehicle else ""}
+            <div class="tax-item"><span>VAT (18%):</span> <b>UGX {vat:,.0f}</b></div>
+            <div class="tax-item"><span>Withholding Tax (6%):</span> <b>UGX {wht:,.0f}</b></div>
+            <br>
+            <p style="font-size: 0.8em; color: #666;">*Disclaimer: This is a professional estimate for consultancy purposes. 
+            Final assessments are determined by the URA at the point of entry.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.error("Please enter a valid CIF value to calculate.")
 
-        st.table(breakdown)
-        
-        st.metric(label="Total Estimated Tax Payable", value=f"UGX {total_tax:,.0f}")
-        st.warning("⚠️ Disclaimer: This is an agency estimate. Official tax is determined by the URA ASYCUDA system.")
-else:
-    with col_out:
-        st.info(f"Provide the CIF value to generate the Rubirizi Agency assessment for {cargo_type}.")
-
-# 7. Sticky Agency Footer
-st.markdown("""
-    <div class="footer">
-        <b>RUBIRIZI CLEARING AND FORWARDING AGENCY</b> | Nakawa, Kampala | <span class="dev-tag">Developed by Victor</span>
-    </div>
-    """, unsafe_allow_html=True)
+# Footer
+st.markdown("---")
+st.caption("© 2026 Rubirizi Tax Consultant | Built for Efficiency")       
