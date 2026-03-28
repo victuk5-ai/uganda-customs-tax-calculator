@@ -1,8 +1,21 @@
-
 hs_code,description,duty_rate
-5210.51.10,"Khanga, Kikoi and Kitenge",0.50
-5211.51.10,"Khanga, Kikoi and Kitenge",0.50
-5212.15.10,"Khanga, Kikoi and Kitenge",0.50
-5513.41.10,"Khanga, Kikoi and Kitenge",0.50
-8703.23.90,"Used Motor Vehicles",0.35
-8471.30.00,"Laptops/Computers",0.00
+5211.51.10,"Khanga, Kikoi and Kitenge (Textiles)",0.50
+8703.21.90,"Small Saloon Cars (Engine < 1000cc)",0.25
+8703.22.90,"Standard Saloon Cars (1000cc - 1500cc)",0.25
+8703.23.90,"Large SUVs/Station Wagons (1500cc - 3000cc)",0.25
+8704.21.90,"Light Commercial Pickups/Vans",0.25
+8701.21.00,"Road Tractors for Semi-Trailers",0.10
+8711.20.90,"Motorcycles (Boda Boda) 50cc-250cc",0.25
+8407.34.00,"Vehicle Engines (> 1000cc)",0.10
+8413.30.00,"Fuel/Oil Pumps for Vehicle Engines",0.10
+8544.30.00,"Ignition/Vehicle Wiring Sets",0.25
+0101.21.00,"Pure-bred Breeding Horses",0.00
+0102.21.00,"Pure-bred Breeding Cattle",0.00
+0701.10.00,"Seed Potatoes",0.25
+0701.90.00,"Mainstream Potatoes",0.35
+0201.30.00,"Boneless Bovine Meat (Beef)",0.35
+0301.11.00,"Freshwater Ornamental Fish",0.25
+8414.51.00,"Household Fans (Ceiling/Table)",0.25
+8501.10.00,"Small Electric Motors (< 37.5W)",0.00
+9018.90.00,"Medical/Surgical Instruments",0.00
+9403.60.00,"Wooden Furniture (Other)",0.35
