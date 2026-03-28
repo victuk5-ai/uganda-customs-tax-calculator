@@ -1,141 +1,104 @@
+   
+import streamlit as st
 
- import streamlit as st
-import pandas as pd
+# 1. MUST BE THE FIRST ST COMMAND
+st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="📈", layout="centered")
 
-# 1. Page Configuration
-st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="📊", layout="centered")
-
-# 2. Professional Branding & Custom CSS
+# 2. Professional Branding & CSS
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
+    .main { background-color: #f4f7f6; }
     .stHeader {
-        background-color: #1a2a6c;
-        padding: 25px;
-        border-radius: 12px;
+        background-color: #004b23;
+        padding: 20px;
+        border-radius: 10px;
         color: white;
         text-align: center;
         margin-bottom: 20px;
     }
-    div.stButton > button:first-child {
+    div.stButton > button {
         width: 100%;
-        background-color: #1a2a6c;
+        background-color: #004b23;
         color: white;
-        height: 3.5em;
         font-weight: bold;
-        border-radius: 8px;
-        border: none;
+        height: 3em;
     }
-    .result-card {
-        padding: 25px;
-        background-color: white;
-        border-radius: 12px;
-        border-left: 6px solid #1a2a6c;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-top: 20px;
-    }
-    .tax-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 5px 0;
-        border-bottom: 1px solid #eee;
+    .result-box {
+        padding: 20px;
+        border-radius: 10px;
+        background-color: #ffffff;
+        border-left: 5px solid #004b23;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
     }
     </style>
     <div class="stHeader">
         <h1>Rubirizi Tax Pro</h1>
-        <p>Expert Customs & Tax Consultancy Services</p>
+        <p>Customs Clearing & Tax Consultancy</p>
     </div>
     """, unsafe_allow_html=True)
 
-# 3. Load HS Code Database
-@st.cache_data
-def load_hscodes():
-    try:
-        # Tries to load the CSV file from your repository
-        data = pd.read_csv('hscodes.csv')
-        data['duty_rate'] = data['duty_rate'].astype(float)
-        return data
-    except:
-        # Fallback if file is missing during first setup
-        return pd.DataFrame(columns=['hs_code', 'description', 'duty_rate'])
-
-df = load_hscodes()
-
-# 4. Search and Selection Logic
-st.subheader("🔍 Step 1: Find Product & Duty Rate")
-search_query = st.text_input("Search by product name or HS Code (e.g. 'Kitenge' or '8703')")
-
-selected_rate = 0.0
+# 3. Load Data with Error Handling
+selected_rate = 0.25 # Default 25%
 is_vehicle = False
 product_name = "General Goods"
 
-if search_query:
-    results = df[df['description'].str.contains(search_query, case=False, na=False) | 
-                 df['hs_code'].astype(str).str.contains(search_query, na=False)]
+try:
+    import pandas as pd
+    @st.cache_data
+    def load_data():
+        return pd.read_csv('hscodes.csv')
     
-    if not results.empty:
-        options = results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1).tolist()
-        choice = st.selectbox("Select the exact item:", options)
+    df = load_data()
+    
+    st.subheader("Step 1: Search HS Code")
+    query = st.text_input("Search product (e.g. Kitenge, SUV, or 8703)")
+    
+    if query:
+        results = df[df['description'].str.contains(query, case=False, na=False) | 
+                     df['hs_code'].astype(str).str.contains(query, na=False)]
         
-        # Extract selected data
-        match = results[results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1) == choice].iloc[0]
-        selected_rate = float(match['duty_rate'])
-        product_name = match['description']
-        
-        # Check if it's a vehicle (Chapter 87) for extra taxes
-        if str(match['hs_code']).startswith('87'):
-            is_vehicle = True
-            st.warning("🚗 Vehicle Category Detected: Additional Excise and Environmental levies may apply.")
-        
-        st.info(f"**Applied Import Duty:** {selected_rate * 100}%")
-    else:
-        st.error("No matching HS Code found. Please enter details manually below.")
+        if not results.empty:
+            choice = st.selectbox("Pick the correct item:", results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1))
+            match = results[results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1) == choice].iloc[0]
+            selected_rate = float(match['duty_rate'])
+            product_name = match['description']
+            
+            if str(match['hs_code']).startswith('87'):
+                is_vehicle = True
+                st.warning("🚗 Motor Vehicle detected: Adding Excise & Environmental Levy.")
+            st.info(f"Rate Found: {selected_rate * 100}% Import Duty")
+        else:
+            st.warning("No HS code found. Using manual calculation.")
 
-# 5. Calculation Logic
-st.subheader("💰 Step 2: Valuation & Calculation")
-cif_val = st.number_input("Enter Customs Value (CIF) in UGX", min_value=0, step=500000, format="%d")
+except Exception as e:
+    st.error("Setup incomplete: Please ensure 'pandas' is in requirements.txt and 'hscodes.csv' is uploaded.")
+    selected_rate = st.number_input("Manual Duty Rate (e.g. 0.25 for 25%)", 0.0, 1.0, 0.25)
 
-# Optional: Manual override if search failed
-if not search_query or results.empty:
-    selected_rate = st.slider("Manual Import Duty Rate", 0.0, 1.0, 0.25, 0.05)
+# 4. Calculation Section
+st.subheader("Step 2: Calculate Taxes")
+cif_val = st.number_input("Customs Value (CIF) in UGX", min_value=0, step=100000)
 
-if st.button("Generate Tax Estimate"):
+if st.button("Calculate Total Payable"):
     if cif_val > 0:
-        # Standard Calculations
-        import_duty = cif_val * selected_rate
-        
-        # Vehicle Specifics (Uganda standard estimates)
-        excise_duty = cif_val * 0.20 if is_vehicle else 0
+        # Tax Stack Logic
+        duty = cif_val * selected_rate
+        excise = cif_val * 0.20 if is_vehicle else 0
         env_levy = cif_val * 0.35 if is_vehicle else 0
-        
-        # VAT is calculated on (CIF + Import Duty + Excise)
-        vat_base = cif_val + import_duty + excise_duty
-        vat = vat_base * 0.18
-        
-        # Withholding Tax (Standard 6%)
+        vat = (cif_val + duty + excise) * 0.18
         wht = cif_val * 0.06
+        total = duty + excise + env_levy + vat + wht
         
-        total_payable = import_duty + excise_duty + env_levy + vat + wht
-        
-        # 6. Display Results
         st.markdown(f"""
-        <div class="result-card">
-            <h2 style="color: #1a2a6c; margin-top:0;">Total: UGX {total_payable:,.0f}</h2>
+        <div class="result-box">
+            <h3>Total Tax: UGX {total:,.0f}</h3>
             <p><b>Product:</b> {product_name}</p>
             <hr>
-            <div class="tax-item"><span>Import Duty ({selected_rate*100}%):</span> <b>UGX {import_duty:,.0f}</b></div>
-            {"<div class='tax-item'><span>Excise Duty (20%):</span> <b>UGX " + f"{excise_duty:,.0f}" + "</b></div>" if is_vehicle else ""}
-            {"<div class='tax-item'><span>Environmental Levy (35%):</span> <b>UGX " + f"{env_levy:,.0f}" + "</b></div>" if is_vehicle else ""}
-            <div class="tax-item"><span>VAT (18%):</span> <b>UGX {vat:,.0f}</b></div>
-            <div class="tax-item"><span>Withholding Tax (6%):</span> <b>UGX {wht:,.0f}</b></div>
-            <br>
-            <p style="font-size: 0.8em; color: #666;">*Disclaimer: This is a professional estimate for consultancy purposes. 
-            Final assessments are determined by the URA at the point of entry.</p>
+            <p>Import Duty: UGX {duty:,.0f}</p>
+            {"<p>Excise Duty (20%): UGX " + f"{excise:,.0f}</p>" if is_vehicle else ""}
+            {"<p>Env. Levy (35%): UGX " + f"{env_levy:,.0f}</p>" if is_vehicle else ""}
+            <p>VAT (18%): UGX {vat:,.0f}</p>
+            <p>Withholding Tax (6%): UGX {wht:,.0f}</p>
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.error("Please enter a valid CIF value to calculate.")
-
-# Footer
-st.markdown("---")
-st.caption("© 2026 Rubirizi Tax Consultant | Built for Efficiency")       
+        st.error("Please enter a CIF value.")
