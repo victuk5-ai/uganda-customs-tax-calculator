@@ -11,14 +11,43 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 
 # ==========================================
-# 1. PAGE CONFIG & UI THEME
+# 1. PAGE CONFIG & UI THEME (DARK MODE FIX)
 # ==========================================
 st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="⚖️", layout="wide")
 
 st.markdown("""
 <style>
+    /* Header styling */
     .header {background:#004b23; padding:25px; border-radius:15px; color:white; text-align:center; margin-bottom:20px}
-    .main-card {background:white; padding:20px; border-radius:15px; border: 1px solid #eee; box-shadow:0 4px 12px rgba(0,0,0,0.05);}
+    
+    /* Main Card: Forced visibility for Dark Mode */
+    .main-card {
+        background-color: #ffffff !important; 
+        padding: 25px; 
+        border-radius: 15px; 
+        border: 1px solid #eee; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        color: #1a1a1a !important;
+    }
+    
+    /* Force text inside card to be dark */
+    .main-card p, .main-card b, .main-card span {
+        color: #1a1a1a !important;
+    }
+    
+    .tax-amount {
+        color: #d90429 !important; 
+        margin-top: 0;
+        font-weight: bold;
+        font-size: 32px;
+    }
+    
+    .tax-row {
+        display: flex; 
+        justify-content: space-between; 
+        padding: 10px 0; 
+        border-bottom: 1px solid #f0f0f0;
+    }
 </style>
 <div class="header">
     <h1>Rubirizi Tax Pro</h1>
@@ -47,7 +76,7 @@ with st.sidebar:
             return r["rates"]["UGX"]
         except: return 3800
     rate = st.number_input("Exchange Rate (UGX)", value=int(get_rate()))
-    st.info("**Agency:** Rubirizi Clearing & Forwarding\n**Location:** Nakawa, Kampala")
+    st.info("**Agency:** Rubirizi Clearing & Forwarding\\n**Location:** Nakawa, Kampala")
 
 # ==========================================
 # 3. INPUTS & SAD-MATCHED LOGIC
@@ -72,11 +101,11 @@ with left:
     freight = st.number_input("Freight/Shipping", 0.0, value=1200.0 if category == "Motor Vehicle" else 0.0)
     wht_exempt = st.toggle("WHT Exempt?")
 
-# --- CALCULATION LOGIC (PER URA SAD DOCUMENT) ---
+# --- CALCULATIONS (Based on URA SAD Document Logic) ---
 insurance = fob * 0.015
 stat_value_ugx = (fob + freight + insurance) * rate if (fob > 0) else 0
 
-# Determine Rates
+# SAD Rates
 duty_p = 0.10 if category == "Appliances (SAD Logic)" else (0.35 if category == "Mivumba" else 0.25)
 excise_p, env_p, reg_fees = 0.0, 0.0, 0.0
 
@@ -85,17 +114,15 @@ if category == "Motor Vehicle":
     env_p = 0.50 if age >= 13 else (0.35 if age >= 8 else 0.0)
     excise_p = 0.20 if cc > 2500 else 0.10
     reg_fees = 1500000 
-elif category == "Mivumba":
-    env_p = 0.30
 
-# Breakdown
+# Individual Taxes
 i_duty = stat_value_ugx * duty_p
 wht = 0 if wht_exempt else (stat_value_ugx * 0.06) 
 idf_infra = stat_value_ugx * 0.03
 env = stat_value_ugx * env_p
 excise = stat_value_ugx * excise_p
 
-# VAT Compounding: (Stat Value + Duty + IDF + Infra + Env + Excise)
+# VAT Compounding Logic: (Stat Value + Duty + IDF + Infra + Env + Excise)
 vat_base = stat_value_ugx + i_duty + idf_infra + env + excise
 vat = vat_base * 0.18 
 
@@ -110,18 +137,18 @@ with right:
         st.markdown(f"""
         <div class="main-card">
             <p style="margin-bottom:5px;">Total Estimated URA Taxes</p>
-            <h2 style="color:#d90429; margin-top:0;">UGX {math.ceil(grand_total):,.0f}</h2>
-            <hr>
-            <p><b>Import Duty (102):</b> {i_duty:,.0f}</p>
-            <p><b>VAT (401):</b> {vat:,.0f}</p>
-            <p><b>WHT (105):</b> {wht:,.0f}</p>
-            <p><b>Registration:</b> {reg_fees:,.0f}</p>
+            <div class="tax-amount">UGX {math.ceil(grand_total):,.0f}</div>
+            <hr style="border: 0.5px solid #eee;">
+            <div class="tax-row"><span>Import Duty (102)</span><b>{i_duty:,.0f}</b></div>
+            <div class="tax-row"><span>VAT (401)</span><b>{vat:,.0f}</b></div>
+            <div class="tax-row"><span>WHT (105)</span><b>{wht:,.0f}</b></div>
+            <div class="tax-row" style="border-bottom:none;"><span>Registration Fees</span><b>{reg_fees:,.0f}</b></div>
         </div>
         """, unsafe_allow_html=True)
         
         st.write("")
         
-        # WhatsApp Link Button (Native Streamlit - No raw HTML code on mobile)
+        # Native link button prevents raw HTML code on mobile
         msg = f"Hi Victor, I need help clearing my {item_label}. Estimate: UGX {grand_total:,.0f}"
         wa_url = f"https://wa.me/256706631303?text={urllib.parse.quote(msg)}"
         st.link_button("💬 Hire Rubirizi Clearing Expert", wa_url, use_container_width=True)
@@ -147,7 +174,6 @@ with right:
                 Spacer(1, 15)
             ]
             
-            # Tax Table (Strictly no HTML tags in data)
             data = [
                 ['Tax Component', 'Rate', 'Amount (UGX)'],
                 ['Import Duty (102)', f'{int(duty_p*100)}%', f'{i_duty:,.0f}'],
@@ -170,14 +196,14 @@ with right:
             content.append(table)
             
             content.append(Spacer(1, 30))
-            content.append(Paragraph("DISCLAIMER: This is a preliminary tax estimate based on 2026 URA standards. Final liability is determined by URA valuation and SAD assessment.", styles["Italic"]))
+            content.append(Paragraph("DISCLAIMER: This is a preliminary tax estimate based on 2026 URA standards. Final liability is determined by URA valuation.", styles["Italic"]))
             
             doc.build(content)
             return buf.getvalue()
 
         st.download_button("📄 Download Official Quote", generate_report(), "Rubirizi_Quote.pdf", "application/pdf")
     else:
-        st.info("Please enter the item value to generate the assessment.")
+        st.info("Enter details on the left to see assessment results.")
 
 st.markdown("---")
 st.caption("© 2026 Rubirizi Clearing & Forwarding Agency | Nakawa Branch | Expert: Victor Tukesiga")
