@@ -3,9 +3,9 @@ import pandas as pd
 import requests
 import datetime
 import math
-import io
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+import io
 
 # =========================
 # 1. PAGE CONFIG & STYLING
@@ -14,6 +14,7 @@ st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="⚖️", layout="wi
 
 st.markdown("""
 <style>
+    .main {background-color: #f8f9fa;}
     .header {background:#004b23; padding:25px; border-radius:15px; color:white; text-align:center; margin-bottom:20px}
     .card {background:white; padding:30px; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); color:#333}
     .total-tax {color:#d90429; font-size:32px; font-weight:bold; margin:10px 0}
@@ -23,120 +24,181 @@ st.markdown("""
 </style>
 <div class="header">
     <h1>Rubirizi Tax Pro</h1>
-    <p>2026 URA Valuation & Customs Advisory Portal</p>
+    <p>Professional Customs & Tax Advisory System | 2026 URA Standards</p>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================
-# 2. VALUATION DATABASE (2026 ESTIMATES)
+# 2. SESSION STATE & AUTH
 # =========================
-# These are typical URA valuation guide averages for 2026
-car_db = {
-    "Toyota Fielder (2015-2018)": 6500,
-    "Toyota Premio (2014-2017)": 7200,
-    "Toyota Harrier (2016-2019)": 14500,
-    "Toyota Land Cruiser V8 (2016+)": 45000,
-    "Subaru Forester (2015-2018)": 8500,
-    "Custom (Enter Manually)": 0
-}
+if "auth" not in st.session_state:
+    st.session_state["auth"] = False
 
 # =========================
 # 3. SIDEBAR & TOOLS
 # =========================
 with st.sidebar:
-    st.title("System Settings")
+    st.image("https://www.ura.go.ug/wp-content/uploads/2021/04/URA-Logo.png", width=150) # Placeholder for URA logo
+    st.title("Settings")
+    
+    # Live Exchange Rate Tool
     def get_live_rate():
         try:
             r = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()
             return r["rates"]["UGX"]
-        except: return 3880
+        except:
+            return 3880
     
-    rate = st.number_input("Exchange Rate (UGX)", value=int(get_live_rate()))
+    current_rate = st.number_input("Exchange Rate (USD → UGX)", value=int(get_live_rate()))
+    
     st.markdown("---")
-    st.info("Agent: Victor Tukesiga\n\nLocation: Nakawa, Kampala")
-
-# =========================
-# 4. CALCULATOR INTERFACE
-# =========================
-left, right = st.columns([1, 1], gap="large")
-
-with left:
-    st.subheader("🔍 Valuation & Specs")
-    
-    cat = st.selectbox("Category", ["Motor Vehicle", "General Goods", "Mivumba"])
-    
-    # Dynamic Valuation Logic
-    fob_input = 0.0
-    if cat == "Motor Vehicle":
-        selected_car = st.selectbox("Quick Valuation (URA Guide)", list(car_db.keys()))
-        if selected_car != "Custom (Enter Manually)":
-            fob_input = car_db[selected_car]
-            st.success(f"URA Estimated FOB: ${fob_input:,.0f}")
-        else:
-            fob_input = st.number_input("Enter Invoice FOB (USD)", min_value=0.0)
-        
-        yom = st.number_input("Year of Manufacture", 2008, 2026, 2017)
-        cc = st.number_input("Engine Size (cc)", 800, 6000, 1500)
+    # Admin Login
+    if not st.session_state["auth"]:
+        st.subheader("🔑 Admin Access")
+        user = st.text_input("Username")
+        pw = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if user == "admin" and pw == "1234": # Change this for production!
+                st.session_state["auth"] = True
+                st.rerun()
+            else:
+                st.error("Invalid Credentials")
     else:
-        fob_input = st.number_input("Value of Goods", min_value=0.0)
-        curr = st.selectbox("Currency", ["USD", "UGX"])
+        st.success("✅ Logged in as Admin")
+        if st.button("Logout"):
+            st.session_state["auth"] = False
+            st.rerun()
 
-    shipping = st.number_input("Freight / Shipping", min_value=0.0, value=1200.0 if cat == "Motor Vehicle" else 0.0)
-    wht_exempt = st.toggle("WHT Exempt (Tax Compliant?)")
+# =========================
+# 4. MAIN CALCULATOR INTERFACE
+# =========================
+if not st.session_state["auth"]:
+    col_in, col_res = st.columns([1, 1], gap="large")
 
-# --- CALCULATION LOGIC ---
-insurance = fob_input * 0.015
-cif_ugx = (fob_input + shipping + insurance) * rate
-
-# Tax Logic
-duty_p, excise_p, env_p, reg_fees = 0.25, 0.10, 0.0, 0.0
-
-if cat == "Motor Vehicle":
-    age = 2026 - yom
-    if age >= 13: env_p = 0.50
-    elif age >= 8: env_p = 0.35
-    excise_p = 0.20 if cc > 2500 else 0.10
-    reg_fees = 1500000 
-
-elif cat == "Mivumba":
-    env_p, duty_p = 0.30, 0.35
-
-# Taxes
-i_duty = cif_ugx * duty_p
-idf = cif_ugx * 0.015
-infra = cif_ugx * 0.015
-excise = cif_ugx * excise_p
-env = cif_ugx * env_p
-wht = 0 if wht_exempt else (cif_ugx * 0.06)
-
-vat_base = cif_ugx + i_duty + excise + idf + infra + env
-vat = vat_base * 0.18
-total_ura = i_duty + idf + infra + excise + env + vat + wht
-
-with right:
-    st.subheader("⚖️ Final Quote")
-    if fob_input > 0:
-        st.markdown(f"""
-        <div class="card">
-            <p style="margin:0">Total Estimated URA Taxes:</p>
-            <div class="total-tax">UGX {math.ceil(total_ura + reg_fees):,.0f}</div>
-            <hr>
-            <div class="row-item"><span>Import Duty (25%)</span><b>{i_duty:,.0f}</b></div>
-            <div class="row-item"><span>VAT (18%)</span><b>{vat:,.0f}</b></div>
-            <div class="row-item"><span>Env. Levy ({int(env_p*100)}%)</span><b>{env:,.0f}</b></div>
-            <div class="row-item"><span>Excise ({int(excise_p*100)}%)</span><b>{excise:,.0f}</b></div>
-            <div class="row-item"><span>WHT (6%)</span><b>{wht:,.0f}</b></div>
-            <div class="row-item"><span>Registration</span><b>{reg_fees:,.0f}</b></div>
-            <hr>
-            <div class="row-item"><strong>TOTAL LANDING</strong><strong>UGX {math.ceil(cif_ugx + total_ura + reg_fees):,.0f}</strong></div>
+    with col_in:
+        st.subheader("📦 Shipment Details")
+        with st.container():
+            item_desc = st.text_input("Item Name / Model", placeholder="e.g. 2018 Toyota Harrier")
+            category = st.selectbox("Import Category", 
+                                  ["Motor Vehicle", "General Goods", "Second-hand Clothes (Mivumba)", "Electronics"])
             
-            <a class="btn-wa" href="https://wa.me/256706631303?text=Hi Victor, I need clearing for {selected_car if cat=='Motor Vehicle' else 'Goods'}. Quote: UGX {total_ura+reg_fees:,.0f}">
-            💬 Start Clearing Process
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.info("Select a vehicle or enter a value to generate the tax quote.")
+            fob_val = st.number_input("FOB Value (Invoice Price)", min_value=0.0)
+            currency = st.selectbox("Currency", ["USD", "UGX"])
+            freight_val = st.number_input("Freight / Shipping Cost", min_value=0.0)
+            insurance_p = st.slider("Insurance %", 1.0, 5.0, 1.5)
+            
+            wht_exempt = st.toggle("WHT Exempt (Are you tax compliant?)")
+
+        if category == "Motor Vehicle":
+            st.markdown("---")
+            st.subheader("🚗 Vehicle Specs")
+            year_man = st.number_input("Year of Manufacture", 2008, 2026, 2017)
+            engine_cc = st.number_input("Engine Size (cc)", 800, 6000, 1500)
+            fuel_type = st.radio("Fuel Type", ["Petrol/Diesel", "Hybrid", "Electric"], horizontal=True)
+
+    # 5. CALCULATION LOGIC
+    # Base Values
+    ins_cost = fob_val * (insurance_p / 100)
+    cif_val = fob_val + freight_val + ins_cost
+    cif_ugx = cif_val * current_rate if currency == "USD" else cif_val
+
+    # Tax Rates 2026
+    duty_r = 0.25
+    excise_r = 0.0
+    env_r = 0.0
+    reg_fee = 0.0
+
+    if category == "Motor Vehicle":
+        age = 2026 - year_man
+        if age >= 13: env_r = 0.50
+        elif age >= 8: env_r = 0.35
+        
+        excise_r = 0.20 if engine_cc > 2500 else 0.10
+        if fuel_type == "Electric": excise_r = 0.0
+        reg_fee = 1500000 # Registration & Plates
+
+    elif category == "Second-hand Clothes (Mivumba)":
+        env_r = 0.30 # New 2026 Mivumba Levy
+        duty_r = 0.35
+
+    # Taxes
+    i_duty = cif_ugx * duty_r
+    idf = cif_ugx * 0.015
+    infra = cif_ugx * 0.015
+    excise = cif_ugx * excise_r
+    env_levy = cif_ugx * env_r
+    
+    # VAT (18% on sum of all values)
+    vat_b = cif_ugx + i_duty + excise + idf + infra + env_levy
+    vat_val = vat_b * 0.18
+    wht_val = 0 if wht_exempt else (cif_ugx * 0.06)
+
+    total_taxes = i_duty + idf + infra + excise + env_levy + vat_val + wht_val
+    grand_total = total_taxes + reg_fee
+
+    with col_res:
+        st.subheader("📊 Tax Breakdown")
+        if fob_val > 0:
+            st.markdown(f"""
+            <div class="card">
+                <p>Estimated Total Tax Payable (URA):</p>
+                <div class="total-tax">UGX {math.ceil(grand_total):,.0f}</div>
+                <hr>
+                <div class="row-item"><span>Import Duty</span><b>{i_duty:,.0f}</b></div>
+                <div class="row-item"><span>VAT (18%)</span><b>{vat_val:,.0f}</b></div>
+                <div class="row-item"><span>Excise & Levies</span><b>{(excise + env_levy):,.0f}</b></div>
+                <div class="row-item"><span>Fees (IDF/Infra/WHT)</span><b>{(idf + infra + wht_val):,.0f}</b></div>
+                <div class="row-item"><span>Registration & Plates</span><b>{reg_fee:,.0f}</b></div>
+                <hr>
+                <div class="row-item"><strong>TOTAL LANDING COST</strong><strong>UGX {math.ceil(cif_ugx + grand_total):,.0f}</strong></div>
+                
+                <a class="btn-wa" href="https://wa.me/256706631303?text=Hi Victor, I need help clearing my {item_desc}. Tax Estimate: UGX {grand_total:,.0f}">
+                💬 Contact Rubirizi Clearing Expert
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # PDF Report Generation
+            def generate_pdf():
+                buffer = io.BytesIO()
+                doc = SimpleDocTemplate(buffer)
+                styles = getSampleStyleSheet()
+                elements = [
+                    Paragraph("Rubirizi Tax Pro - Customs Quote", styles["Title"]),
+                    Spacer(1, 12),
+                    Paragraph(f"Item: {item_desc}", styles["Normal"]),
+                    Paragraph(f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}", styles["Normal"]),
+                    Paragraph(f"Total Taxes: UGX {grand_total:,.0f}", styles["Normal"]),
+                    Paragraph(f"Total Landing: UGX {cif_ugx + grand_total:,.0f}", styles["Normal"]),
+                    Spacer(1, 12),
+                    Paragraph("Note: This is an estimate based on 2026 URA rates.", styles["Italic"])
+                ]
+                doc.build(elements)
+                return buffer.getvalue()
+
+            st.download_button("📄 Download Official Quote", generate_pdf(), "Rubirizi_Quote.pdf", "application/pdf")
+        else:
+            st.info("Enter values on the left to see the calculation.")
+
+# =========================
+# 6. ADMIN PANEL (LOCKED)
+# =========================
+else:
+    st.header("📊 Business Admin Dashboard")
+    st.write("Welcome back, Victor. Here are your latest leads.")
+    
+    # In a real app, you'd connect this to GSheets or a Database
+    # For now, we display a placeholder table
+    lead_data = pd.DataFrame({
+        "Date": [datetime.datetime.now().date()],
+        "Client Item": [item_desc if item_desc else "General Import"],
+        "Est. Tax": [grand_total],
+        "CIF UGX": [cif_ugx]
+    })
+    st.dataframe(lead_data, use_container_width=True)
+    
+    st.metric("Total Tax Calculations Today", "12", "+2")
+    st.metric("Hot Leads (WhatsApp Clicks)", "5", "+1")
 
 st.markdown("---")
-st.caption("© 2026 Rubirizi Clearing | Professional Tax Consultant | Nakawa, Kampala")
+st.caption("© 2026 Rubirizi Clearing & Forwarding Agency | Nakawa, Kyinawataka Road | Licensed Tax Consultant")
