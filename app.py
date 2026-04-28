@@ -4,7 +4,7 @@ import requests
 import datetime
 import math
 import io
-import urllib.parse  # Standard library for URL encoding
+import urllib.parse
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
@@ -30,7 +30,7 @@ st.markdown("""
         font-size: 18px; 
         margin-top: 20px;
     }
-    .btn-wa:hover {background-color: #128C7E; color: white !important;}
+    .btn-wa:hover {background-color: #128C7E; color: white !important; text-decoration: none;}
     .row-item {display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee; font-size:16px}
 </style>
 <div class="header">
@@ -56,7 +56,7 @@ with st.sidebar:
     st.title("Settings")
     def get_rate():
         try:
-            r = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()
+            r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5).json()
             return r["rates"]["UGX"]
         except: return 3880
     rate = st.number_input("Exchange Rate (UGX)", value=int(get_rate()))
@@ -72,9 +72,10 @@ with left:
     category = st.selectbox("Category", ["Motor Vehicle", "General Goods", "Mivumba"])
     
     fob = 0.0
+    selected_car = ""
     if category == "Motor Vehicle":
         selected_car = st.selectbox("Model (URA Guide)", list(car_db.keys()))
-        fob = car_db[selected_car] if selected_car != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
+        fob = float(car_db[selected_car]) if selected_car != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
         yom = st.number_input("Year of Manufacture", 2008, 2026, 2017)
         cc = st.number_input("Engine (cc)", 800, 6000, 1500)
     else:
@@ -103,23 +104,27 @@ excise, env = cif_ugx * excise_p, cif_ugx * env_p
 wht = 0 if wht_exempt else (cif_ugx * 0.06)
 vat = (cif_ugx + i_duty + excise + idf + infra + env) * 0.18
 
-total_ura = i_duty + idf + infra + excise + env + vat + wht
-final_landing = cif_ugx + total_ura + reg_fees
+tax_only = total_ura = i_duty + idf + infra + excise + env + vat + wht
+grand_total_payable = total_ura + reg_fees
+final_landing = cif_ugx + grand_total_payable
 
 # ==========================================
-# 4. RESULTS & PDF
+# 4. RESULTS & WHATSAPP FIX
 # ==========================================
 with right:
     st.subheader("⚖️ Final Assessment")
     if fob > 0:
-        # Pre-encoding the message to avoid syntax errors in the HTML block
-        msg = f"Hi Victor, I need help clearing my {category}. Tax estimate: UGX {total_ura+reg_fees:,.0f}"
-        encoded_msg = urllib.parse.quote(msg)
+        # Construct message safely
+        item_label = selected_car if category == "Motor Vehicle" else category
+        msg_text = f"Hi Victor, I need help clearing my {item_label}. Tax estimate: UGX {grand_total_payable:,.0f}"
+        
+        # This is the safest way to build the link
+        wa_link = f"https://wa.me/256706631303?text={urllib.parse.quote(msg_text)}"
         
         st.markdown(f"""
         <div class="card">
             <p style="margin:0">Total Estimated URA Taxes:</p>
-            <div class="total-tax">UGX {math.ceil(total_ura + reg_fees):,.0f}</div>
+            <div class="total-tax">UGX {math.ceil(grand_total_payable):,.0f}</div>
             <hr>
             <div class="row-item"><span>Import Duty</span><b>{i_duty:,.0f}</b></div>
             <div class="row-item"><span>VAT (18%)</span><b>{vat:,.0f}</b></div>
@@ -129,7 +134,7 @@ with right:
             <hr>
             <div class="row-item"><strong>TOTAL LANDING COST</strong><strong>UGX {math.ceil(final_landing):,.0f}</strong></div>
             
-            <a class="btn-wa" href="https://wa.me/256706631303?text={encoded_msg}" target="_blank">
+            <a class="btn-wa" href="{wa_link}" target="_blank">
                 💬 Hire Rubirizi Clearing Expert
             </a>
         </div>
@@ -137,7 +142,7 @@ with right:
         
         st.write("")
         
-        # Safe PDF generation
+        # PDF Generator
         try:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf)
@@ -145,7 +150,7 @@ with right:
             content = [
                 Paragraph("Rubirizi Tax Pro Assessment", s["Title"]),
                 Spacer(1, 12),
-                Paragraph(f"Category: {category} | Total Taxes: UGX {total_ura + reg_fees:,.0f}", s["Normal"]),
+                Paragraph(f"Category: {category} | Total Taxes: UGX {grand_total_payable:,.0f}", s["Normal"]),
                 Spacer(1, 12),
                 Paragraph("Generated on: " + datetime.datetime.now().strftime("%Y-%m-%d"), s["Italic"])
             ]
