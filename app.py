@@ -9,38 +9,30 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
 # ==========================================
-# 1. PAGE CONFIG & STYLING
+# 1. PAGE CONFIG & UI THEME
 # ==========================================
 st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="⚖️", layout="wide")
 
+# We simplified the CSS to focus only on the button stability
 st.markdown("""
 <style>
-    .header {background:#004b23; padding:25px; border-radius:15px; color:white; text-align:center; margin-bottom:20px}
-    .card {background:white; padding:30px; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); color:#333; border: 1px solid #eee;}
-    .total-tax {color:#d90429; font-size:32px; font-weight:bold; margin:10px 0}
-    .btn-wa {
-        background-color: #25D366 !important; 
-        color: white !important; 
-        padding: 16px; 
-        border-radius: 10px; 
-        text-align: center; 
-        display: block; 
-        text-decoration: none !important; 
-        font-weight: bold; 
-        font-size: 18px; 
-        margin-top: 20px;
+    .report-card {
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 20px;
     }
-    .btn-wa:hover {background-color: #128C7E !important;}
-    .row-item {display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee; font-size:16px}
+    .tax-val {
+        color: #d90429;
+        font-size: 28px;
+        font-weight: bold;
+    }
 </style>
-<div class="header">
-    <h1>Rubirizi Tax Pro</h1>
-    <p>Professional Customs & Tax Advisory | 2026 URA Standards</p>
-</div>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. DATA & SIDEBAR
+# 2. DATA & LIVE EXCHANGE
 # ==========================================
 car_db = {
     "Toyota Fielder (2015-2018)": 6500,
@@ -52,8 +44,7 @@ car_db = {
 }
 
 with st.sidebar:
-    st.image("https://www.ura.go.ug/wp-content/uploads/2021/04/URA-Logo.png", width=120)
-    st.title("Settings")
+    st.title("Admin Settings")
     def get_rate():
         try:
             r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5).json()
@@ -63,33 +54,33 @@ with st.sidebar:
     st.info("**Consultant:** Victor Tukesiga\n**Location:** Nakawa")
 
 # ==========================================
-# 3. INPUTS & LOGIC
+# 3. INPUT CALCULATOR
 # ==========================================
-left, right = st.columns([1, 1], gap="large")
+col1, col2 = st.columns([1, 1], gap="large")
 
-with left:
+with col1:
     st.subheader("📋 Shipment Details")
     category = st.selectbox("Category", ["Motor Vehicle", "General Goods", "Mivumba"])
     
     fob = 0.0
-    item_label = ""
+    item_name = ""
     if category == "Motor Vehicle":
-        item_label = st.selectbox("Model (URA Guide)", list(car_db.keys()))
-        fob = float(car_db[item_label]) if item_label != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
+        item_name = st.selectbox("Select Model", list(car_db.keys()))
+        fob = float(car_db[item_name]) if item_name != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
         yom = st.number_input("Year of Manufacture", 2008, 2026, 2017)
         cc = st.number_input("Engine (cc)", 800, 6000, 1500)
     else:
-        item_label = category
+        item_name = category
         fob = st.number_input("Value of Goods", 0.0)
-        curr = st.selectbox("Currency", ["USD", "UGX"])
 
-    freight = st.number_input("Freight/Shipping", 0.0, value=1200.0 if category == "Motor Vehicle" else 0.0)
-    wht_exempt = st.toggle("WHT Exempt?")
+    freight = st.number_input("Freight", 0.0, value=1200.0 if category == "Motor Vehicle" else 0.0)
+    wht_exempt = st.toggle("Tax Compliant (WHT Exempt)")
 
-# --- CALCULATIONS ---
+# --- LOGIC ---
 insurance = fob * 0.015
-cif_ugx = (fob + freight + insurance) * rate if (category != "Motor Vehicle" or fob > 0) else 0
+cif_ugx = (fob + freight + insurance) * rate if (fob > 0) else 0
 
+# 2026 Tax Tiers
 duty_p, excise_p, env_p, reg_fees = 0.25, 0.10, 0.0, 0.0
 if category == "Motor Vehicle":
     age = 2026 - yom
@@ -105,63 +96,64 @@ excise, env = cif_ugx * excise_p, cif_ugx * env_p
 wht = 0 if wht_exempt else (cif_ugx * 0.06)
 vat = (cif_ugx + i_duty + excise + idf + infra + env) * 0.18
 
-total_taxes = i_duty + idf + infra + excise + env + vat + wht
-grand_total = total_taxes + reg_fees
-final_landing = cif_ugx + grand_total
+total_ura_taxes = i_duty + idf + infra + excise + env + vat + wht
+grand_total = total_ura_taxes + reg_fees
 
 # ==========================================
-# 4. RESULTS & THE WHATSAPP BUTTON
+# 4. RESULTS & THE WHATSAPP FIX
 # ==========================================
-with right:
-    st.subheader("⚖️ Final Assessment")
+with col2:
+    st.subheader("⚖️ Assessment Report")
     if fob > 0:
-        # 1. Clean URL encoding for the WhatsApp message
-        message = f"Hi Victor, I need help clearing my {item_label}. Tax estimate: UGX {grand_total:,.0f}"
-        encoded_msg = urllib.parse.quote(message)
-        wa_url = f"https://wa.me/256706631303?text={encoded_msg}"
+        # Displaying the Data in a clean way (Not HTML, to avoid errors)
+        st.write("---")
+        st.write(f"**Total Estimated Taxes:**")
+        st.title(f"UGX {grand_total:,.0f}")
         
-        # 2. Render the results card and button using HTML
-        st.markdown(f"""
-        <div class="card">
-            <p style="margin:0">Total Estimated URA Taxes:</p>
-            <div class="total-tax">UGX {math.ceil(grand_total):,.0f}</div>
-            <hr>
-            <div class="row-item"><span>Import Duty</span><b>{i_duty:,.0f}</b></div>
-            <div class="row-item"><span>VAT (18%)</span><b>{vat:,.0f}</b></div>
-            <div class="row-item"><span>Env. Levy</span><b>{env:,.0f}</b></div>
-            <div class="row-item"><span>Excise & Others</span><b>{(excise + idf + infra):,.0f}</b></div>
-            <div class="row-item"><span>Registration Fees</span><b>{reg_fees:,.0f}</b></div>
-            <hr>
-            <div class="row-item"><strong>TOTAL LANDING COST</strong><strong>UGX {math.ceil(final_landing):,.0f}</strong></div>
-            
-            <a href="{wa_url}" target="_blank" class="btn-wa">
-                💬 Hire Rubirizi Clearing Expert
+        st.write(f"Import Duty: {i_duty:,.0f}")
+        st.write(f"VAT (18%): {vat:,.0f}")
+        st.write(f"Environmental Levy: {env:,.0f}")
+        st.write(f"Registration: {reg_fees:,.0f}")
+        st.write("---")
+        
+        # THE WHATSAPP BUTTON FIX: 
+        # Instead of a complex <a> tag, we use a simple button style inside st.markdown
+        message_text = f"Hi Victor, I need help clearing my {item_name}. Estimate: UGX {grand_total:,.0f}"
+        encoded_message = urllib.parse.quote(message_text)
+        whatsapp_url = f"https://wa.me/256706631303?text={encoded_message}"
+        
+        # This is a much cleaner way to trigger the link as a button
+        st.markdown(f'''
+            <a href="{whatsapp_url}" target="_blank" style="text-decoration: none;">
+                <div style="
+                    background-color: #25D366;
+                    color: white;
+                    padding: 15px;
+                    text-align: center;
+                    border-radius: 10px;
+                    font-weight: bold;
+                    font-size: 20px;
+                    cursor: pointer;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                ">
+                    💬 Chat with Victor on WhatsApp
+                </div>
             </a>
-        </div>
-        """, unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
         
         st.write("")
         
-        # PDF Generation
+        # PDF Option
         try:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf)
             s = getSampleStyleSheet()
-            content = [
-                Paragraph("Rubirizi Tax Pro Assessment", s["Title"]),
-                Spacer(1, 12),
-                Paragraph(f"Item: {item_label}", s["Normal"]),
-                Paragraph(f"Total Taxes: UGX {grand_total:,.0f}", s["Heading2"]),
-                Paragraph(f"Exchange Rate: {rate} UGX/USD", s["Normal"]),
-                Spacer(1, 12),
-                Paragraph("Disclaimer: This is an estimate based on 2026 URA standards.", s["Italic"])
-            ]
+            content = [Paragraph("Rubirizi Quote", s["Title"]), Paragraph(f"Total: UGX {grand_total:,.0f}", s["Heading2"])]
             doc.build(content)
-            st.download_button("📄 Download PDF Report", buf.getvalue(), "Rubirizi_Quote.pdf", "application/pdf")
-        except Exception as e:
-            st.error(f"Error generating PDF: {e}")
+            st.download_button("📄 Download PDF Report", buf.getvalue(), "Quote.pdf", "application/pdf")
+        except: pass
     else:
-        st.info("Input item value to generate the report.")
+        st.info("Enter details on the left to generate the tax quote.")
 
 st.markdown("---")
-st.caption("© 2026 Rubirizi Clearing & Forwarding Agency | Nakawa, Kampala")
+st.caption("© 2026 Rubirizi Clearing & Forwarding | Nakawa, Kampala")
