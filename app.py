@@ -19,18 +19,18 @@ st.markdown("""
     .card {background:white; padding:30px; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); color:#333; border: 1px solid #eee;}
     .total-tax {color:#d90429; font-size:32px; font-weight:bold; margin:10px 0}
     .btn-wa {
-        background-color: #25D366; 
+        background-color: #25D366 !important; 
         color: white !important; 
         padding: 16px; 
         border-radius: 10px; 
         text-align: center; 
         display: block; 
-        text-decoration: none; 
+        text-decoration: none !important; 
         font-weight: bold; 
         font-size: 18px; 
         margin-top: 20px;
     }
-    .btn-wa:hover {background-color: #128C7E; color: white !important; text-decoration: none;}
+    .btn-wa:hover {background-color: #128C7E !important;}
     .row-item {display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee; font-size:16px}
 </style>
 <div class="header">
@@ -72,13 +72,14 @@ with left:
     category = st.selectbox("Category", ["Motor Vehicle", "General Goods", "Mivumba"])
     
     fob = 0.0
-    selected_car = ""
+    item_label = ""
     if category == "Motor Vehicle":
-        selected_car = st.selectbox("Model (URA Guide)", list(car_db.keys()))
-        fob = float(car_db[selected_car]) if selected_car != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
+        item_label = st.selectbox("Model (URA Guide)", list(car_db.keys()))
+        fob = float(car_db[item_label]) if item_label != "Other / Custom Value" else st.number_input("Invoice FOB (USD)", 0.0)
         yom = st.number_input("Year of Manufacture", 2008, 2026, 2017)
         cc = st.number_input("Engine (cc)", 800, 6000, 1500)
     else:
+        item_label = category
         fob = st.number_input("Value of Goods", 0.0)
         curr = st.selectbox("Currency", ["USD", "UGX"])
 
@@ -104,37 +105,36 @@ excise, env = cif_ugx * excise_p, cif_ugx * env_p
 wht = 0 if wht_exempt else (cif_ugx * 0.06)
 vat = (cif_ugx + i_duty + excise + idf + infra + env) * 0.18
 
-tax_only = total_ura = i_duty + idf + infra + excise + env + vat + wht
-grand_total_payable = total_ura + reg_fees
-final_landing = cif_ugx + grand_total_payable
+total_taxes = i_duty + idf + infra + excise + env + vat + wht
+grand_total = total_taxes + reg_fees
+final_landing = cif_ugx + grand_total
 
 # ==========================================
-# 4. RESULTS & WHATSAPP FIX
+# 4. RESULTS & THE WHATSAPP BUTTON
 # ==========================================
 with right:
     st.subheader("⚖️ Final Assessment")
     if fob > 0:
-        # Construct message safely
-        item_label = selected_car if category == "Motor Vehicle" else category
-        msg_text = f"Hi Victor, I need help clearing my {item_label}. Tax estimate: UGX {grand_total_payable:,.0f}"
+        # 1. Clean URL encoding for the WhatsApp message
+        message = f"Hi Victor, I need help clearing my {item_label}. Tax estimate: UGX {grand_total:,.0f}"
+        encoded_msg = urllib.parse.quote(message)
+        wa_url = f"https://wa.me/256706631303?text={encoded_msg}"
         
-        # This is the safest way to build the link
-        wa_link = f"https://wa.me/256706631303?text={urllib.parse.quote(msg_text)}"
-        
+        # 2. Render the results card and button using HTML
         st.markdown(f"""
         <div class="card">
             <p style="margin:0">Total Estimated URA Taxes:</p>
-            <div class="total-tax">UGX {math.ceil(grand_total_payable):,.0f}</div>
+            <div class="total-tax">UGX {math.ceil(grand_total):,.0f}</div>
             <hr>
             <div class="row-item"><span>Import Duty</span><b>{i_duty:,.0f}</b></div>
             <div class="row-item"><span>VAT (18%)</span><b>{vat:,.0f}</b></div>
             <div class="row-item"><span>Env. Levy</span><b>{env:,.0f}</b></div>
             <div class="row-item"><span>Excise & Others</span><b>{(excise + idf + infra):,.0f}</b></div>
-            <div class="row-item"><span>Registration</span><b>{reg_fees:,.0f}</b></div>
+            <div class="row-item"><span>Registration Fees</span><b>{reg_fees:,.0f}</b></div>
             <hr>
             <div class="row-item"><strong>TOTAL LANDING COST</strong><strong>UGX {math.ceil(final_landing):,.0f}</strong></div>
             
-            <a class="btn-wa" href="{wa_link}" target="_blank">
+            <a href="{wa_url}" target="_blank" class="btn-wa">
                 💬 Hire Rubirizi Clearing Expert
             </a>
         </div>
@@ -142,7 +142,7 @@ with right:
         
         st.write("")
         
-        # PDF Generator
+        # PDF Generation
         try:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf)
@@ -150,16 +150,18 @@ with right:
             content = [
                 Paragraph("Rubirizi Tax Pro Assessment", s["Title"]),
                 Spacer(1, 12),
-                Paragraph(f"Category: {category} | Total Taxes: UGX {grand_total_payable:,.0f}", s["Normal"]),
+                Paragraph(f"Item: {item_label}", s["Normal"]),
+                Paragraph(f"Total Taxes: UGX {grand_total:,.0f}", s["Heading2"]),
+                Paragraph(f"Exchange Rate: {rate} UGX/USD", s["Normal"]),
                 Spacer(1, 12),
-                Paragraph("Generated on: " + datetime.datetime.now().strftime("%Y-%m-%d"), s["Italic"])
+                Paragraph("Disclaimer: This is an estimate based on 2026 URA standards.", s["Italic"])
             ]
             doc.build(content)
             st.download_button("📄 Download PDF Report", buf.getvalue(), "Rubirizi_Quote.pdf", "application/pdf")
         except Exception as e:
-            st.error(f"PDF Error: {e}")
+            st.error(f"Error generating PDF: {e}")
     else:
-        st.info("Input item value to generate report.")
+        st.info("Input item value to generate the report.")
 
 st.markdown("---")
 st.caption("© 2026 Rubirizi Clearing & Forwarding Agency | Nakawa, Kampala")
