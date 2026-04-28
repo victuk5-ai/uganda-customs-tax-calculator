@@ -1,132 +1,142 @@
-
 import streamlit as st
 import pandas as pd
+import requests
+import datetime
+import math
+import io
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
-# 1. Page Config
-st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="⚖️", layout="centered")
+# =========================
+# 1. PAGE CONFIG & STYLING
+# =========================
+st.set_page_config(page_title="Rubirizi Tax Pro", page_icon="⚖️", layout="wide")
 
-# 2. Professional Branding & CSS
 st.markdown("""
-    <style>
-    .stHeader { background-color: #004b23; padding: 20px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; }
-    .result-card { padding: 20px; background-color: #ffffff; border-radius: 10px; border-left: 10px solid #004b23; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .fee-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-family: sans-serif; }
-    .whatsapp-btn { background-color: #25D366; color: white; padding: 12px; border-radius: 8px; text-decoration: none; display: block; text-align: center; margin-top: 15px; font-weight: bold; }
-    </style>
-    <div class="stHeader">
-        <h1>Rubirizi Tax Pro</h1>
-        <p>Expert Customs & Tax Consultancy | 2026 Standard</p>
-    </div>
-    """, unsafe_allow_html=True)
+<style>
+    .header {background:#004b23; padding:25px; border-radius:15px; color:white; text-align:center; margin-bottom:20px}
+    .card {background:white; padding:30px; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); color:#333}
+    .total-tax {color:#d90429; font-size:32px; font-weight:bold; margin:10px 0}
+    .btn-wa {background:#25D366; color:white !important; padding:15px; border-radius:10px; text-align:center; 
+             display:block; text-decoration:none; font-weight:bold; font-size:18px; margin-top:20px}
+    .row-item {display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee; font-size:16px}
+</style>
+<div class="header">
+    <h1>Rubirizi Tax Pro</h1>
+    <p>2026 URA Valuation & Customs Advisory Portal</p>
+</div>
+""", unsafe_allow_html=True)
 
-# 3. Data Loading
-@st.cache_data
-def load_hscodes():
-    try:
-        return pd.read_csv('hscodes.csv')
-    except:
-        return pd.DataFrame(columns=['hs_code', 'description', 'duty_rate'])
+# =========================
+# 2. VALUATION DATABASE (2026 ESTIMATES)
+# =========================
+# These are typical URA valuation guide averages for 2026
+car_db = {
+    "Toyota Fielder (2015-2018)": 6500,
+    "Toyota Premio (2014-2017)": 7200,
+    "Toyota Harrier (2016-2019)": 14500,
+    "Toyota Land Cruiser V8 (2016+)": 45000,
+    "Subaru Forester (2015-2018)": 8500,
+    "Custom (Enter Manually)": 0
+}
 
-df = load_hscodes()
+# =========================
+# 3. SIDEBAR & TOOLS
+# =========================
+with st.sidebar:
+    st.title("System Settings")
+    def get_live_rate():
+        try:
+            r = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()
+            return r["rates"]["UGX"]
+        except: return 3880
+    
+    rate = st.number_input("Exchange Rate (UGX)", value=int(get_live_rate()))
+    st.markdown("---")
+    st.info("Agent: Victor Tukesiga\n\nLocation: Nakawa, Kampala")
 
-# 4. Step 1: Identification
-st.subheader("🔍 Step 1: Item Identification")
-search = st.text_input("Search HS Code or Item Name (Leave blank for manual entry)")
+# =========================
+# 4. CALCULATOR INTERFACE
+# =========================
+left, right = st.columns([1, 1], gap="large")
 
-selected_rate = 0.25
-is_vehicle = False
-product_label = "General Goods"
-
-if search:
-    results = df[df['description'].str.contains(search, case=False, na=False) | 
-                 df['hs_code'].astype(str).str.contains(search, na=False)]
-    if not results.empty:
-        choice = st.selectbox("Select match:", results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1))
-        match = results[results.apply(lambda x: f"{x['hs_code']} - {x['description']}", axis=1) == choice].iloc[0]
-        selected_rate, product_label = float(match['duty_rate']), match['description']
-        if str(match['hs_code']).startswith('87'): is_vehicle = True
+with left:
+    st.subheader("🔍 Valuation & Specs")
+    
+    cat = st.selectbox("Category", ["Motor Vehicle", "General Goods", "Mivumba"])
+    
+    # Dynamic Valuation Logic
+    fob_input = 0.0
+    if cat == "Motor Vehicle":
+        selected_car = st.selectbox("Quick Valuation (URA Guide)", list(car_db.keys()))
+        if selected_car != "Custom (Enter Manually)":
+            fob_input = car_db[selected_car]
+            st.success(f"URA Estimated FOB: ${fob_input:,.0f}")
+        else:
+            fob_input = st.number_input("Enter Invoice FOB (USD)", min_value=0.0)
+        
+        yom = st.number_input("Year of Manufacture", 2008, 2026, 2017)
+        cc = st.number_input("Engine Size (cc)", 800, 6000, 1500)
     else:
-        st.warning("No match found. Manual mode active.")
-        selected_rate = st.number_input("Manual Duty Rate (e.g. 0.35)", 0.0, 1.0, 0.25)
-        is_vehicle = st.checkbox("Is this a Motor Vehicle?")
-        product_label = st.text_input("Item Description", "Manual Entry Item")
-else:
-    selected_rate = st.number_input("Duty Rate (e.g. 0.25 for 25%)", 0.0, 1.0, 0.25)
-    is_vehicle = st.checkbox("Is this a Motor Vehicle?")
-    product_label = st.text_input("Item Description", "General Goods")
+        fob_input = st.number_input("Value of Goods", min_value=0.0)
+        curr = st.selectbox("Currency", ["USD", "UGX"])
 
-# 5. Step 2: Vehicle Age Logic
-env_levy_rate = 0.0
-if is_vehicle:
-    st.info("🚗 2026 Vehicle Rules Apply")
-    year = st.number_input("Year of Manufacture", min_value=2010, max_value=2027, value=2018)
-    age = 2026 - year
-    if age < 9: env_levy_rate = 0.0
-    elif age == 9: env_levy_rate = 0.10
-    elif age == 10: env_levy_rate = 0.20
-    elif age == 11: env_levy_rate = 0.30
-    elif age == 12: env_levy_rate = 0.40
-    elif age >= 13: env_levy_rate = 0.50
+    shipping = st.number_input("Freight / Shipping", min_value=0.0, value=1200.0 if cat == "Motor Vehicle" else 0.0)
+    wht_exempt = st.toggle("WHT Exempt (Tax Compliant?)")
 
-# 6. Step 3: Valuation & Currency (NEW SECTION)
-st.subheader("💰 Step 2: Valuation")
-col1, col2 = st.columns(2)
+# --- CALCULATION LOGIC ---
+insurance = fob_input * 0.015
+cif_ugx = (fob_input + shipping + insurance) * rate
 
-with col1:
-    currency = st.selectbox("Currency", ["UGX", "USD"])
-with col2:
-    input_val = st.number_input(f"Enter CIF Value in {currency}", min_value=0.0, step=100.0)
+# Tax Logic
+duty_p, excise_p, env_p, reg_fees = 0.25, 0.10, 0.0, 0.0
 
-# Exchange Rate handling
-exch_rate = 1.0
-if currency == "USD":
-    exch_rate = st.number_input("Current Exchange Rate (1 USD to UGX)", value=3800, step=10)
-    cif_val_ugx = input_val * exch_rate
-else:
-    cif_val_ugx = input_val
+if cat == "Motor Vehicle":
+    age = 2026 - yom
+    if age >= 13: env_p = 0.50
+    elif age >= 8: env_p = 0.35
+    excise_p = 0.20 if cc > 2500 else 0.10
+    reg_fees = 1500000 
 
-# 7. Calculation & Display
-if st.button("Generate Professional Assessment"):
-    if cif_val_ugx > 0:
-        # 2026 Fee Structure
-        idf_infra = cif_val_ugx * 0.025 
-        duty = cif_val_ugx * selected_rate
-        excise = cif_val_ugx * 0.20 if is_vehicle else 0
-        env_levy = cif_val_ugx * env_levy_rate
-        vat = (cif_val_ugx + duty + excise + idf_infra) * 0.18
-        wht = cif_val_ugx * 0.06
-        total = duty + excise + env_levy + vat + wht + idf_infra
+elif cat == "Mivumba":
+    env_p, duty_p = 0.30, 0.35
 
-        # --- Clean Display ---
+# Taxes
+i_duty = cif_ugx * duty_p
+idf = cif_ugx * 0.015
+infra = cif_ugx * 0.015
+excise = cif_ugx * excise_p
+env = cif_ugx * env_p
+wht = 0 if wht_exempt else (cif_ugx * 0.06)
+
+vat_base = cif_ugx + i_duty + excise + idf + infra + env
+vat = vat_base * 0.18
+total_ura = i_duty + idf + infra + excise + env + vat + wht
+
+with right:
+    st.subheader("⚖️ Final Quote")
+    if fob_input > 0:
         st.markdown(f"""
-        <div class="result-card">
-            <h2 style="color:#004b23;">Total Tax: UGX {total:,.0f}</h2>
-            <p><b>Item:</b> {product_label}</p>
-            {"<p style='font-size:0.8em; color:grey;'>Converted from $" + f"{input_val:,.2f} @ {exch_rate:,.0f}" + "</p>" if currency == "USD" else ""}
+        <div class="card">
+            <p style="margin:0">Total Estimated URA Taxes:</p>
+            <div class="total-tax">UGX {math.ceil(total_ura + reg_fees):,.0f}</div>
             <hr>
-            <div class="fee-row"><span>Import Duty:</span> <b>{duty:,.0f}</b></div>
-            <div class="fee-row"><span>VAT (18%):</span> <b>{vat:,.0f}</b></div>
-            <div class="fee-row"><span>IDF & Infra (2.5%):</span> <b>{idf_infra:,.0f}</b></div>
-            <div class="fee-row"><span>Withholding Tax (6%):</span> <b>{wht:,.0f}</b></div>
-        """, unsafe_allow_html=True)
-
-        if is_vehicle:
-            st.markdown(f"""
-            <div class="fee-row"><span>Excise (20%):</span> <b>{excise:,.0f}</b></div>
-            <div class="fee-row"><span>Env. Levy ({int(env_levy_rate*100)}%):</span> <b>{env_levy:,.0f}</b></div>
-            """, unsafe_allow_html=True)
+            <div class="row-item"><span>Import Duty (25%)</span><b>{i_duty:,.0f}</b></div>
+            <div class="row-item"><span>VAT (18%)</span><b>{vat:,.0f}</b></div>
+            <div class="row-item"><span>Env. Levy ({int(env_p*100)}%)</span><b>{env:,.0f}</b></div>
+            <div class="row-item"><span>Excise ({int(excise_p*100)}%)</span><b>{excise:,.0f}</b></div>
+            <div class="row-item"><span>WHT (6%)</span><b>{wht:,.0f}</b></div>
+            <div class="row-item"><span>Registration</span><b>{reg_fees:,.0f}</b></div>
+            <hr>
+            <div class="row-item"><strong>TOTAL LANDING</strong><strong>UGX {math.ceil(cif_ugx + total_ura + reg_fees):,.0f}</strong></div>
             
-        st.markdown(f"""
-            <hr>
-            <a href="https://wa.me/256706631303?text=Hi%20Victor,%20I%20need%20clearing%20help%20with%20{product_label}" class="whatsapp-btn">
-                Contact Victor for Clearing (WhatsApp)
+            <a class="btn-wa" href="https://wa.me/256706631303?text=Hi Victor, I need clearing for {selected_car if cat=='Motor Vehicle' else 'Goods'}. Quote: UGX {total_ura+reg_fees:,.0f}">
+            💬 Start Clearing Process
             </a>
         </div>
         """, unsafe_allow_html=True)
-
-        # Copy Summary
-        st.write("---")
-        summary = f"Rubirizi Tax Pro Assessment:\nItem: {product_label}\nTotal Tax: UGX {total:,.0f}\nContact Victor: 0706631303"
-        st.code(summary)
     else:
-        st.error("Please enter a valid CIF value.")
+        st.info("Select a vehicle or enter a value to generate the tax quote.")
+
+st.markdown("---")
+st.caption("© 2026 Rubirizi Clearing | Professional Tax Consultant | Nakawa, Kampala")
